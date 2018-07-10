@@ -1,10 +1,15 @@
 find_package(OpenGL REQUIRED)
 find_package(GLUT REQUIRED)
-find_package(Glew)
+find_package(CUDA)
 
 SET(SIFTGPU_ENABLE_SERVER FALSE)
 SET(SIFTGPU_ENABLE_OPENCL FALSE)
-SET(SIFTGPU_ENABLE_CUDA FALSE)
+if(CUDA_FOUND)
+  find_package(GLEW REQUIRED)
+  SET(SIFTGPU_ENABLE_CUDA TRUE)
+else()
+  SET(SIFTGPU_ENABLE_CUDA FALSE)
+endif()
 SET(SIFTGPU_ENABLE_SSE TRUE)
 SET(SIFTGPU_SSE_OPTIONS -march=core2 -mfpmath=sse)
 SET(SIFTGPU_PREFER_GLUT TRUE)
@@ -24,6 +29,10 @@ IF(SIFTGPU_ENABLE_OPENCL)
   SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DCL_SIFTGPU_ENABLED" )
 ENDIF(SIFTGPU_ENABLE_OPENCL)
 
+IF(SIFTGPU_ENABLE_CUDA)
+  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DCUDA_SIFTGPU_ENABLED")
+ENDIF()
+
 IF(APPLE)
   SET(LIBS_SIFTGPU )
 ELSE(APPLE)
@@ -39,12 +48,42 @@ ENDIF(SIFTGPU_DISABLE_DEVIL)
 if (GLEW_FOUND)
 	include_directories( ${GLEW_INCLUDE_DIRS} )
 	SET (GLEW_LIBRARIES GLEW)
+else()
+  SET (GLEW_LIBRARIES "")
 endif (GLEW_FOUND)
 
-ADD_LIBRARY(siftgpu STATIC FrameBufferObject.cpp GlobalUtil.cpp GLTexImage.cpp ProgramGLSL.cpp 
-            ProgramGPU.cpp ShaderMan.cpp SiftGPU.cpp SiftPyramid.cpp PyramidGL.cpp SiftMatch.cpp)
+SET(SRCS
+  FrameBufferObject.cpp
+  GlobalUtil.cpp
+  GLTexImage.cpp
+  ProgramGLSL.cpp 
+  ProgramGPU.cpp
+  ShaderMan.cpp
+  SiftGPU.cpp
+  SiftPyramid.cpp
+  PyramidGL.cpp
+  SiftMatch.cpp
+)
+if(SIFTGPU_ENABLE_CUDA)
+  CUDA_ADD_LIBRARY(siftgpu SHARED
+    ${SRCS}
+    PyramidCU.cpp
+    SiftMatchCU.cpp
+    ProgramCU.cu
+    CuTexImage.cpp
+  )
+else()
+  ADD_LIBRARY(siftgpu SHARED
+    ${SRCS}
+  )
+endif()
 
 TARGET_LINK_LIBRARIES(siftgpu ${LIBS_SIFTGPU} ${GLEW_LIBRARIES} ${GLUT_LIBRARIES} ${OPENGL_LIBRARIES} )
 
+TARGET_INCLUDE_DIRECTORIES(siftgpu INTERFACE
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+)
+
 INSTALL(FILES SiftGPU.h DESTINATION include)
-INSTALL(TARGETS siftgpu DESTINATION lib )
+INSTALL(TARGETS siftgpu EXPORT siftgpu-target DESTINATION lib )
+INSTALL(EXPORT siftgpu-target DESTINATION shared/siftgpu/cmake)
